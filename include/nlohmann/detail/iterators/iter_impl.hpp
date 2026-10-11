@@ -3,7 +3,7 @@
 // |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-License-Identifier: MIT
 
 #pragma once
@@ -23,7 +23,7 @@ NLOHMANN_JSON_NAMESPACE_BEGIN
 namespace detail
 {
 
-// forward declare to be able to friend it later on
+// forward declare, to be able to friend it later on
 template<typename IteratorType> class iteration_proxy;
 template<typename IteratorType> class iteration_proxy_value;
 
@@ -35,7 +35,7 @@ This class implements a both iterators (iterator and const_iterator) for the
       been set (e.g., by a constructor or a copy assignment). If the iterator is
       default-constructed, it is *uninitialized* and most methods are undefined.
       **The library uses assertions to detect calls on uninitialized iterators.**
-This class satisfies the following concept requirements (REQ-JSON-01):
+@requirement The class satisfies the following concept requirements:
 -
 [BidirectionalIterator](https://en.cppreference.com/w/cpp/named_req/BidirectionalIterator):
   The iterator that can be moved can be moved in both directions (i.e.
@@ -60,11 +60,9 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
     static_assert(is_basic_json<typename std::remove_const<BasicJsonType>::type>::value,
                   "iter_impl only accepts (const) basic_json");
     // superficial check for the LegacyBidirectionalIterator named requirement
-    // note: only array_t::iterator is checked here; object_t::iterator may be
-    // a forward-only iterator as long as reverse iteration and operator--
-    // are never used on it
-    static_assert(std::is_base_of<std::bidirectional_iterator_tag, typename std::iterator_traits<typename array_t::iterator>::iterator_category>::value,
-                  "basic_json iterator assumes array type iterators satisfy the LegacyBidirectionalIterator named requirement.");
+    static_assert(std::is_base_of<std::bidirectional_iterator_tag, std::bidirectional_iterator_tag>::value
+                  &&  std::is_base_of<std::bidirectional_iterator_tag, typename std::iterator_traits<typename array_t::iterator>::iterator_category>::value,
+                  "basic_json iterator assumes array and object type iterators satisfy the LegacyBidirectionalIterator named requirement.");
 
   public:
     /// The std::iterator class template (used as a base class to provide typedefs) is deprecated in C++17.
@@ -90,13 +88,8 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
 
     iter_impl() = default;
     ~iter_impl() = default;
-    // the exception specification is left to be computed rather than declared:
-    // an array or object type whose iterator is not nothrow move constructible
-    // (std::deque's is not before libstdc++ 11) would make a declared noexcept
-    // differ from the implicit one, which deletes the function -- and is an
-    // error outright with older compilers
-    iter_impl(iter_impl&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor,cppcoreguidelines-noexcept-move-operations)
-    iter_impl& operator=(iter_impl&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor,cppcoreguidelines-noexcept-move-operations)
+    iter_impl(iter_impl&&) noexcept = default;
+    iter_impl& operator=(iter_impl&&) noexcept = default;
 
     /*!
     @brief constructor for a given JSON instance
@@ -279,12 +272,6 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         }
     }
 
-    /// @throw invalid_iterator.214 always
-    JSON_HEDLEY_NO_RETURN void throw_cannot_get_value() const
-    {
-        JSON_THROW(invalid_iterator::create(exception_id::iterator_value_unavailable, "cannot get value", m_object));
-    }
-
   public:
     /*!
     @brief return a reference to the value pointed to by the iterator
@@ -309,7 +296,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
             }
 
             case value_t::null:
-                throw_cannot_get_value();
+                JSON_THROW(invalid_iterator::create(214, "cannot get value", m_object));
 
             case value_t::string:
             case value_t::boolean:
@@ -325,7 +312,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
                     return *m_object;
                 }
 
-                throw_cannot_get_value();
+                JSON_THROW(invalid_iterator::create(214, "cannot get value", m_object));
             }
         }
     }
@@ -367,7 +354,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
                     return m_object;
                 }
 
-                throw_cannot_get_value();
+                JSON_THROW(invalid_iterator::create(214, "cannot get value", m_object));
             }
         }
     }
@@ -484,7 +471,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         // if objects are not the same, the comparison is undefined
         if (JSON_HEDLEY_UNLIKELY(m_object != other.m_object))
         {
-            JSON_THROW(invalid_iterator::create(exception_id::iterators_compare_different_values, "cannot compare iterators of different containers", m_object));
+            JSON_THROW(invalid_iterator::create(212, "cannot compare iterators of different containers", m_object));
         }
 
         // value-initialized forward iterators can be compared, and must compare equal to other value-initialized iterators of the same type #4493
@@ -533,7 +520,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         // if objects are not the same, the comparison is undefined
         if (JSON_HEDLEY_UNLIKELY(m_object != other.m_object))
         {
-            JSON_THROW(invalid_iterator::create(exception_id::iterators_compare_different_values, "cannot compare iterators of different containers", m_object));
+            JSON_THROW(invalid_iterator::create(212, "cannot compare iterators of different containers", m_object));
         }
 
         // value-initialized forward iterators can be compared, and must compare equal to other value-initialized iterators of the same type #4493
@@ -546,7 +533,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         switch (m_object->m_data.m_type)
         {
             case value_t::object:
-                JSON_THROW(invalid_iterator::create(exception_id::iterator_order_on_object, "cannot compare order of object iterators", m_object));
+                JSON_THROW(invalid_iterator::create(213, "cannot compare order of object iterators", m_object));
 
             case value_t::array:
                 return (m_it.array_iterator < other.m_it.array_iterator);
@@ -602,7 +589,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         switch (m_object->m_data.m_type)
         {
             case value_t::object:
-                JSON_THROW(invalid_iterator::create(exception_id::iterator_arithmetic_on_object, "cannot use offsets with object iterators", m_object));
+                JSON_THROW(invalid_iterator::create(209, "cannot use offsets with object iterators", m_object));
 
             case value_t::array:
             {
@@ -681,7 +668,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         switch (m_object->m_data.m_type)
         {
             case value_t::object:
-                JSON_THROW(invalid_iterator::create(exception_id::iterator_arithmetic_on_object, "cannot use offsets with object iterators", m_object));
+                JSON_THROW(invalid_iterator::create(209, "cannot use offsets with object iterators", m_object));
 
             case value_t::array:
                 return m_it.array_iterator - other.m_it.array_iterator;
@@ -710,13 +697,13 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
         switch (m_object->m_data.m_type)
         {
             case value_t::object:
-                JSON_THROW(invalid_iterator::create(exception_id::iterator_subscript_on_object, "cannot use operator[] for object iterators", m_object));
+                JSON_THROW(invalid_iterator::create(208, "cannot use operator[] for object iterators", m_object));
 
             case value_t::array:
                 return *std::next(m_it.array_iterator, n);
 
             case value_t::null:
-                throw_cannot_get_value();
+                JSON_THROW(invalid_iterator::create(214, "cannot get value", m_object));
 
             case value_t::string:
             case value_t::boolean:
@@ -732,7 +719,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
                     return *m_object;
                 }
 
-                throw_cannot_get_value();
+                JSON_THROW(invalid_iterator::create(214, "cannot get value", m_object));
             }
         }
     }
@@ -750,7 +737,7 @@ class iter_impl // NOLINT(cppcoreguidelines-special-member-functions,hicpp-speci
             return m_it.object_iterator->first;
         }
 
-        JSON_THROW(invalid_iterator::create(exception_id::iterator_key_not_object, "cannot use key() for non-object iterators", m_object));
+        JSON_THROW(invalid_iterator::create(207, "cannot use key() for non-object iterators", m_object));
     }
 
     /*!

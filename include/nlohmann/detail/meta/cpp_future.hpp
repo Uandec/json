@@ -3,12 +3,13 @@
 // |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-FileCopyrightText: 2018 The Abseil Authors
-// SPDX-License-Identifier: MIT AND Apache-2.0
+// SPDX-License-Identifier: MIT
 
 #pragma once
 
+#include <array> // array
 #include <cstddef> // size_t
 #include <type_traits> // conditional, enable_if, false_type, integral_constant, is_constructible, is_integral, is_same, remove_cv, remove_reference, true_type
 #include <utility> // index_sequence, make_index_sequence, index_sequence_for
@@ -159,6 +160,12 @@ struct static_const
     template<typename T>
     constexpr T static_const<T>::value;
 #endif
+
+template<typename T, typename... Args>
+constexpr std::array<T, sizeof...(Args)> make_array(Args&& ... args)
+{
+    return std::array<T, sizeof...(Args)> {{static_cast<T>(std::forward<Args>(args))...}};
+}
 
 }  // namespace detail
 NLOHMANN_JSON_NAMESPACE_END

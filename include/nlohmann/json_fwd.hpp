@@ -3,7 +3,7 @@
 // |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-License-Identifier: MIT
 
 #ifndef INCLUDE_NLOHMANN_JSON_FWD_HPP_
@@ -11,7 +11,8 @@
 
 #include <cstdint> // int64_t, uint64_t
 #include <map> // map
-#include <string> // allocator, string
+#include <memory> // allocator
+#include <string> // string
 #include <vector> // vector
 
 #include <nlohmann/detail/abi_macros.hpp>
@@ -31,7 +32,7 @@ This serializer ignores the template arguments and uses ADL
 for serialization.
 */
 template<typename T = void, typename SFINAE = void>
-struct adl_serializer; // IWYU pragma: keep
+struct adl_serializer;
 
 /// a class to store JSON values
 /// @sa https://json.nlohmann.me/api/basic_json/
@@ -47,12 +48,12 @@ template<template<typename U, typename V, typename... Args> class ObjectType =
          adl_serializer,
          class BinaryType = std::vector<std::uint8_t>, // cppcheck-suppress syntaxError
          class CustomBaseClass = void>
-class basic_json; // IWYU pragma: keep
+class basic_json;
 
 /// @brief JSON Pointer defines a string syntax for identifying a specific value within a JSON document
 /// @sa https://json.nlohmann.me/api/json_pointer/
 template<typename RefStringType>
-class json_pointer; // IWYU pragma: keep
+class json_pointer;
 
 /*!
 @brief default specialization
@@ -63,7 +64,7 @@ using json = basic_json<>;
 /// @brief a minimal map-like container that preserves insertion order
 /// @sa https://json.nlohmann.me/api/ordered_map/
 template<class Key, class T, class IgnoredLess, class Allocator>
-struct ordered_map; // IWYU pragma: keep
+struct ordered_map;
 
 /// @brief specialization that maintains the insertion order of object keys
 /// @sa https://json.nlohmann.me/api/ordered_json/

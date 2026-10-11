@@ -3,24 +3,20 @@
 // |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2026 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-License-Identifier: MIT
 
 #pragma once
 
-#include <algorithm> // max, min
 #include <functional> // equal_to, less
 #include <initializer_list> // initializer_list
 #include <iterator> // input_iterator_tag, iterator_traits
-#include <memory> // allocator // IWYU pragma: keep
-#include <new> // for operator new (placement new)
+#include <memory> // allocator
 #include <stdexcept> // for out_of_range
-#include <tuple> // forward_as_tuple
-#include <type_traits> // enable_if, integral_constant, is_convertible, is_nothrow_move_constructible
-#include <utility> // forward, move, pair, piecewise_construct
+#include <type_traits> // enable_if, is_convertible
+#include <utility> // pair
 #include <vector> // vector
 
-#include <nlohmann/detail/abi_macros.hpp>
 #include <nlohmann/detail/macro_scope.hpp>
 #include <nlohmann/detail/meta/type_traits.hpp>
 
@@ -54,92 +50,32 @@ template <class Key, class T, class IgnoredLess = std::less<Key>,
         : Container{first, last, alloc} {}
     ordered_map(std::initializer_list<value_type> init, const Allocator& alloc = Allocator() )
         : Container{init, alloc} {}
-    ordered_map(const ordered_map&) = default;
-    ordered_map(ordered_map&&) noexcept(std::is_nothrow_move_constructible<Container>::value) = default;
-    ~ordered_map() = default;
 
-    ordered_map& operator=(const ordered_map& other)
+    std::pair<iterator, bool> emplace(const key_type& key, T&& t)
     {
-        if (this != &other)
+        for (auto it = this->begin(); it != this->end(); ++it)
         {
-            ordered_map tmp(other);
-            Container::operator=(std::move(static_cast<Container&>(tmp)));
-        }
-        return *this;
-    }
-
-    ordered_map& operator=(ordered_map&& other) noexcept(std::is_nothrow_move_assignable<Container>::value)
-    {
-        Container::operator=(std::move(static_cast<Container&>(other)));
-        return *this;
-    }
-
-private:
-    /// @brief find the entry for @a key, for either constness of @a self
-    /// @note the single place that performs the linear key search
-    template<typename Self, typename KeyType>
-    static auto find_impl(Self& self, const KeyType& key) -> decltype(self.begin())
-    {
-        for (auto it = self.begin(); it != self.end(); ++it)
-        {
-            if (self.m_compare(it->first, key))
+            if (m_compare(it->first, key))
             {
-                return it;
+                return {it, false};
             }
         }
-        return self.end();
-    }
-
-    /// @brief shared implementation of the const and non-const at() overloads
-    /// @throw std::out_of_range if @a key is not found
-    template<typename Self, typename KeyType>
-    static auto at_impl(Self& self, const KeyType& key) -> decltype((self.begin()->second))
-    {
-        const auto it = find_impl(self, key);
-        if (it == self.end())
-        {
-            JSON_THROW(std::out_of_range("key not found"));
-        }
-        return it->second;
-    }
-
-    /// @brief remove the entry @a it points to, preserving order
-    /// @note keys are not movable, so the tail is destroyed and re-constructed in place
-    void erase_at(iterator it)
-    {
-        for (auto next = it; ++next != this->end(); ++it)
-        {
-            it->~value_type(); // Destroy but keep allocation
-            new (&*it) value_type{std::move(*next)};
-        }
-        Container::pop_back();
-    }
-
-public:
-    template<class V, detail::enable_if_t<
-                 detail::is_constructible<T, V>::value, int> = 0>
-    std::pair<iterator, bool> emplace(const key_type& key, V && t)
-    {
-        const auto it = find_impl(*this, key);
-        if (it != this->end())
-        {
-            return {it, false};
-        }
-        append(key, std::forward<V>(t));
+        Container::emplace_back(key, std::forward<T>(t));
         return {std::prev(this->end()), true};
     }
 
-    template<class KeyType, class V, detail::enable_if_t<
-                 detail::conjunction<detail::is_usable_as_key_type<key_compare, key_type, KeyType>,
-                                     detail::is_constructible<T, V>>::value, int> = 0>
-    std::pair<iterator, bool> emplace(KeyType && key, V && t)
+    template<class KeyType, detail::enable_if_t<
+                 detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
+    std::pair<iterator, bool> emplace(KeyType && key, T && t)
     {
-        const auto it = find_impl(*this, key);
-        if (it != this->end())
+        for (auto it = this->begin(); it != this->end(); ++it)
         {
-            return {it, false};
+            if (m_compare(it->first, key))
+            {
+                return {it, false};
+            }
         }
-        append(std::forward<KeyType>(key), std::forward<V>(t));
+        Container::emplace_back(std::forward<KeyType>(key), std::forward<T>(t));
         return {std::prev(this->end()), true};
     }
 
@@ -169,35 +105,75 @@ public:
 
     T& at(const key_type& key)
     {
-        return at_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it->second;
+            }
+        }
+
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     template<class KeyType, detail::enable_if_t<
                  detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
     T & at(KeyType && key) // NOLINT(cppcoreguidelines-missing-std-forward)
     {
-        return at_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it->second;
+            }
+        }
+
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     const T& at(const key_type& key) const
     {
-        return at_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it->second;
+            }
+        }
+
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     template<class KeyType, detail::enable_if_t<
                  detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
     const T & at(KeyType && key) const // NOLINT(cppcoreguidelines-missing-std-forward)
     {
-        return at_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it->second;
+            }
+        }
+
+        JSON_THROW(std::out_of_range("key not found"));
     }
 
     size_type erase(const key_type& key)
     {
-        const auto it = find_impl(*this, key);
-        if (it != this->end())
+        for (auto it = this->begin(); it != this->end(); ++it)
         {
-            erase_at(it);
-            return 1;
+            if (m_compare(it->first, key))
+            {
+                // Since we cannot move const Keys, re-construct them in place
+                for (auto next = it; ++next != this->end(); ++it)
+                {
+                    it->~value_type(); // Destroy but keep allocation
+                    new (&*it) value_type{std::move(*next)};
+                }
+                Container::pop_back();
+                return 1;
+            }
         }
         return 0;
     }
@@ -206,11 +182,19 @@ public:
                  detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
     size_type erase(KeyType && key) // NOLINT(cppcoreguidelines-missing-std-forward)
     {
-        const auto it = find_impl(*this, key);
-        if (it != this->end())
+        for (auto it = this->begin(); it != this->end(); ++it)
         {
-            erase_at(it);
-            return 1;
+            if (m_compare(it->first, key))
+            {
+                // Since we cannot move const Keys, re-construct them in place
+                for (auto next = it; ++next != this->end(); ++it)
+                {
+                    it->~value_type(); // Destroy but keep allocation
+                    new (&*it) value_type{std::move(*next)};
+                }
+                Container::pop_back();
+                return 1;
+            }
         }
         return 0;
     }
@@ -240,17 +224,9 @@ public:
         //               ^        ^
         //             first    last
 
-        // Note on conformance: before C++20, [basic.life]/8 did not allow an
-        // object of a type with a const member (like value_type's const Key)
-        // to transparently replace the destroyed one, so strictly, accessing
-        // it through the vector's existing pointers would have required
-        // std::launder (which does not exist before C++17). C++20 dropped that
-        // condition (P1971R0, NB comment US 041). Compilers have always treated
-        // this pattern as intended, so it is kept deliberately.
-
         // Since we cannot move const Keys, we re-construct them in place.
         // We start at first and re-construct (viz. copy) the elements from
-        // the back of the vector. Example for the first iteration:
+        // the back of the vector. Example for first iteration:
 
         //               ,--------.
         //               v        |   destroy e and re-construct with h
@@ -260,9 +236,6 @@ public:
 
         for (auto it = first; std::next(it, elements_affected) != Container::end(); ++it)
         {
-            // false positive: Infer's model of std::string keeps the buffer of a
-            // moved-from string, so it assumes a buffer is destroyed twice
-            // @infer-ignore USE_AFTER_DELETE
             it->~value_type(); // destroy but keep allocation
             new (&*it) value_type{std::move(*std::next(it, elements_affected))}; // "move" next element to it
         }
@@ -286,38 +259,66 @@ public:
 
     size_type count(const key_type& key) const
     {
-        return find_impl(*this, key) != this->end() ? 1 : 0;
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return 1;
+            }
+        }
+        return 0;
     }
 
     template<class KeyType, detail::enable_if_t<
                  detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
     size_type count(KeyType && key) const // NOLINT(cppcoreguidelines-missing-std-forward)
     {
-        return find_impl(*this, key) != this->end() ? 1 : 0;
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return 1;
+            }
+        }
+        return 0;
     }
 
     iterator find(const key_type& key)
     {
-        return find_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it;
+            }
+        }
+        return Container::end();
     }
 
     template<class KeyType, detail::enable_if_t<
                  detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
     iterator find(KeyType && key) // NOLINT(cppcoreguidelines-missing-std-forward)
     {
-        return find_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it;
+            }
+        }
+        return Container::end();
     }
 
     const_iterator find(const key_type& key) const
     {
-        return find_impl(*this, key);
-    }
-
-    template<class KeyType, detail::enable_if_t<
-                 detail::is_usable_as_key_type<key_compare, key_type, KeyType>::value, int> = 0>
-    const_iterator find(KeyType && key) const // NOLINT(cppcoreguidelines-missing-std-forward)
-    {
-        return find_impl(*this, key);
+        for (auto it = this->begin(); it != this->end(); ++it)
+        {
+            if (m_compare(it->first, key))
+            {
+                return it;
+            }
+        }
+        return Container::end();
     }
 
     std::pair<iterator, bool> insert( value_type&& value )
@@ -327,12 +328,14 @@ public:
 
     std::pair<iterator, bool> insert( const value_type& value )
     {
-        const auto it = find_impl(*this, value.first);
-        if (it != this->end())
+        for (auto it = this->begin(); it != this->end(); ++it)
         {
-            return {it, false};
+            if (m_compare(it->first, value.first))
+            {
+                return {it, false};
+            }
         }
-        append(value);
+        Container::push_back(value);
         return {--this->end(), true};
     }
 
@@ -350,64 +353,6 @@ public:
     }
 
 private:
-    /*!
-    @brief add an element whose key is not yet contained at the end
-
-    A std::vector copies all elements when it grows, because their const keys
-    make them not nothrow move constructible. For ordered_json, this is a deep
-    copy of every value. Where the strong exception guarantee can be kept, grow
-    the storage here instead, copying only the keys and moving the values.
-    */
-    template<typename... Args>
-    void append(Args&& ... args)
-    {
-        // evaluated here rather than at class scope, because T is still
-        // incomplete when basic_json instantiates its object_t
-        using move_values = std::integral_constant<bool, detail::conjunction<
-                detail::negation<std::is_nothrow_move_constructible<value_type>>,
-                std::is_copy_constructible<key_type>,
-                detail::is_default_constructible<mapped_type>,
-                std::is_nothrow_move_assignable<mapped_type>>::value>;
-        append_impl(move_values{}, std::forward<Args>(args)...);
-    }
-
-    template<typename... Args>
-    void append_impl(std::true_type /*unused*/, Args&& ... args)
-    {
-        if (this->size() < this->capacity())
-        {
-            Container::emplace_back(std::forward<Args>(args)...);
-            return;
-        }
-
-        // 1. May throw, but only changes tmp: copy the keys, value-initialize
-        //    the values, and add the new element. The arguments may refer to
-        //    elements of this container, so they are used before any value is
-        //    moved out of it.
-        Container tmp(this->get_allocator()); // equal allocators, so swap() is valid
-        tmp.reserve((std::min)(this->max_size(), (std::max)(size_type{1}, 2 * this->size())));
-        for (const auto& element : *this)
-        {
-            tmp.emplace_back(std::piecewise_construct, std::forward_as_tuple(element.first), std::forward_as_tuple());
-        }
-        tmp.emplace_back(std::forward<Args>(args)...);
-
-        // 2. Cannot throw: move the values over and adopt the new storage.
-        auto it = tmp.begin();
-        for (auto& element : *this)
-        {
-            it->second = std::move(element.second);
-            ++it;
-        }
-        Container::swap(tmp);
-    }
-
-    template<typename... Args>
-    void append_impl(std::false_type /*unused*/, Args&& ... args)
-    {
-        Container::emplace_back(std::forward<Args>(args)...);
-    }
-
     JSON_NO_UNIQUE_ADDRESS key_compare m_compare = key_compare();
 };
 
